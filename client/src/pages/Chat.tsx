@@ -63,6 +63,24 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const refreshChatList = async () => {
+    try {
+      const conversation = await getConversation();
+      setAllMessages(conversation);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to refresh chats');
+    }
+  };
+
+  const refreshSelectedConversation = async (nextPeerId: string) => {
+    try {
+      const conversation = await getConversationWithPeer(nextPeerId);
+      setMessages(conversation);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to refresh conversation');
+    }
+  };
+
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
       setLocation('/login');
@@ -149,23 +167,21 @@ export default function Chat() {
           return;
         }
 
-        const inferredSender =
-          incoming.payload.receiver === user?.id ? peerId : user?.id || '';
-        const inferredReceiver =
-          incoming.payload.receiver === user?.id ? user?.id || '' : incoming.payload.receiver;
+        if (incoming.payload.receiver === user?.id) {
+          void refreshChatList();
+          if (peerId) {
+            void refreshSelectedConversation(peerId);
+          }
+          return;
+        }
 
         const liveMessage: Message = {
           id: incoming.id,
           text: incoming.payload.text,
-          sender: inferredSender,
-          receiver: inferredReceiver,
+          sender: user?.id || '',
+          receiver: incoming.payload.receiver,
           timeSent: incoming.timestamp,
         };
-
-        const matchesOpenConversation =
-          peerId &&
-          ((liveMessage.sender === user?.id && liveMessage.receiver === peerId) ||
-            (liveMessage.sender === peerId && liveMessage.receiver === user?.id));
 
         setAllMessages((prev) => {
           if (prev.some((message) => message.id === liveMessage.id)) {
@@ -173,10 +189,6 @@ export default function Chat() {
           }
           return [...prev, liveMessage];
         });
-
-        if (!matchesOpenConversation) {
-          return;
-        }
 
         setMessages((prev) => {
           if (prev.some((message) => message.id === liveMessage.id)) {
