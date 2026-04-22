@@ -6,14 +6,12 @@
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
 export interface UserRequest {
-  username: string;
   email: string;
   password: string;
 }
 
 export interface UserResponse {
   id: string;
-  username: string;
   email: string;
   created_at: string;
 }
@@ -45,10 +43,12 @@ export interface Profile {
   username: string;
   id: string;
   time_created: string;
+  bio: string;
 }
 
 export interface CreateProfileRequest {
   username: string;
+  bio?: string;
 }
 
 export interface Message {
@@ -124,11 +124,9 @@ export const clearToken = (): void => {
 export const clearSession = (): void => {
   clearToken();
   deleteCookie('user_id');
-  deleteCookie('username');
   deleteCookie('email');
   deleteCookie('created_at');
   localStorage.removeItem('user_id');
-  localStorage.removeItem('username');
   localStorage.removeItem('email');
   localStorage.removeItem('created_at');
 };
@@ -140,15 +138,6 @@ export const getCurrentUserId = (): string | null => {
 export const setCurrentUserId = (userId: string): void => {
   setCookie('user_id', userId, 30); // 30 days
   localStorage.setItem('user_id', userId); // Fallback
-};
-
-export const getCurrentUsername = (): string | null => {
-  return getCookie('username') || localStorage.getItem('username');
-};
-
-export const setCurrentUsername = (username: string): void => {
-  setCookie('username', username, 30);
-  localStorage.setItem('username', username);
 };
 
 export const getCurrentEmail = (): string | null => {
@@ -247,6 +236,81 @@ const makeRequest = async (
   }
 };
 
+const makeBinaryRequest = async (
+  endpoint: string,
+  method: 'PUT' | 'POST',
+  body: Blob | ArrayBuffer | Uint8Array,
+  contentType = 'application/octet-stream'
+) => {
+  const headers: Record<string, string> = {
+    'Content-Type': contentType,
+  };
+
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method,
+    headers,
+    body,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    if (
+      response.status === 401 ||
+      errorText.toLowerCase().includes('invalid token') ||
+      errorText.toLowerCase().includes('missing authorization token')
+    ) {
+      clearSession();
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.assign('/login');
+      }
+      throw new Error('Session expired. Please sign in again.');
+    }
+
+    throw new Error(errorText || `HTTP ${response.status}`);
+  }
+};
+
+const makeBlobRequest = async (endpoint: string): Promise<Blob> => {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    if (
+      response.status === 401 ||
+      errorText.toLowerCase().includes('invalid token') ||
+      errorText.toLowerCase().includes('missing authorization token')
+    ) {
+      clearSession();
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.assign('/login');
+      }
+      throw new Error('Session expired. Please sign in again.');
+    }
+
+    throw new Error(errorText || `HTTP ${response.status}`);
+  }
+
+  return response.blob();
+};
+
 // Auth endpoints
 export const registerUser = async (data: UserRequest): Promise<UserResponse> => {
   return makeRequest('/api/auth/register', 'POST', data, false);
@@ -256,16 +320,12 @@ export const loginUser = async (data: UserRequest): Promise<void> => {
   await makeRequest('/api/auth/login', 'POST', data, false);
 };
 
-export const getUserById = async (id: string): Promise<UserResponse> => {
-  return makeRequest(`/api/auth/id/${id}`, 'GET');
+export const getUserById = async (): Promise<UserResponse> => {
+  return makeRequest('/api/auth/id/', 'GET');
 };
 
-export const getUserByUsername = async (username: string): Promise<UserResponse> => {
-  return makeRequest(`/api/auth/username/${username}`, 'GET');
-};
-
-export const deleteUser = async (id: string): Promise<void> => {
-  await makeRequest(`/api/auth/${id}`, 'DELETE');
+export const deleteUser = async (): Promise<void> => {
+  await makeRequest('/api/auth/', 'DELETE');
 };
 
 // Feed endpoints
@@ -310,12 +370,20 @@ export const getProfileById = async (id: string): Promise<Profile> => {
   return makeRequest(`/api/profile/${id}`, 'GET');
 };
 
-export const updateProfile = async (id: string, data: CreateProfileRequest): Promise<void> => {
-  await makeRequest(`/api/profile/${id}`, 'PUT', data);
+export const updateProfile = async (data: CreateProfileRequest): Promise<void> => {
+  await makeRequest('/api/profile/', 'PUT', data);
 };
 
-export const deleteProfile = async (id: string): Promise<void> => {
-  await makeRequest(`/api/profile/${id}`, 'DELETE');
+export const deleteProfile = async (): Promise<void> => {
+  await makeRequest('/api/profile/', 'DELETE');
+};
+
+export const updateProfileAvatar = async (file: File): Promise<void> => {
+  await makeBinaryRequest('/api/profile/avatar/', 'PUT', file, file.type || 'application/octet-stream');
+};
+
+export const getProfileAvatarBlob = async (id: string): Promise<Blob> => {
+  return makeBlobRequest(`/api/profile/avatar/${id}`);
 };
 
 // Chat endpoints

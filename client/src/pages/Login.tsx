@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { loginUser, getToken, getUserByUsername } from '@/lib/api';
+import { loginUser, getToken, getUserById, getProfileById } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -19,7 +19,6 @@ export default function Login() {
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
-    username: '',
     email: '',
     password: '',
   });
@@ -39,7 +38,6 @@ export default function Login() {
     try {
       // Step 1: Login to get token
       await loginUser({
-        username: formData.username,
         email: formData.email,
         password: formData.password,
       });
@@ -51,14 +49,21 @@ export default function Login() {
         throw new Error('No token received from login');
       }
 
-      // Step 2: Fetch user data by username
-      const userData = await getUserByUsername(formData.username);
+      // Step 2: Fetch current user data from auth service
+      const userData = await getUserById();
       
       // Step 3: Update auth context with user data
       login(userData, token);
+
+      let hasProfile = true;
+      try {
+        await getProfileById(userData.id);
+      } catch {
+        hasProfile = false;
+      }
       
       toast.success('Login successful!');
-      setLocation('/feed');
+      setLocation(hasProfile ? '/feed' : '/profile?onboarding=1');
     } catch (error) {
       console.error('Login error:', error);
       toast.error(error instanceof Error ? error.message : 'Login failed');
@@ -78,22 +83,6 @@ export default function Login() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-medium text-foreground">
-                Username
-              </label>
-              <Input
-                id="username"
-                name="username"
-                type="text"
-                placeholder="Enter your username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                className="border-border focus:ring-accent"
-              />
-            </div>
-
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium text-foreground">
                 Email

@@ -2,17 +2,17 @@ import { useEffect, useState } from 'react';
 import { useLocation, useRoute } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { getProfileById, getPublicationsByUser, getUserById, type Profile as PublicProfile, type Publication, type UserResponse } from '@/lib/api';
+import { getProfileAvatarBlob, getProfileById, getPublicationsByUser, type Profile as PublicProfile, type Publication } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Calendar, FileText, User } from 'lucide-react';
+import { FileText, Mail, User } from 'lucide-react';
 
 export default function UserProfile() {
   const [, setLocation] = useLocation();
   const [match, params] = useRoute('/users/:userId');
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
-  const [account, setAccount] = useState<UserResponse | null>(null);
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [publications, setPublications] = useState<Publication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -30,17 +30,29 @@ export default function UserProfile() {
     const loadUserPage = async () => {
       setIsLoading(true);
       try {
-        const [userData, userPublications] = await Promise.all([
-          getUserById(params.userId),
-          getPublicationsByUser(params.userId),
-        ]);
-
-        setAccount(userData);
+        const userPublications = await getPublicationsByUser(params.userId);
         setPublications(userPublications);
 
         try {
           const profileData = await getProfileById(params.userId);
           setProfile(profileData);
+          try {
+            const avatarBlob = await getProfileAvatarBlob(params.userId);
+            const nextUrl = URL.createObjectURL(avatarBlob);
+            setAvatarUrl((prev) => {
+              if (prev) {
+                URL.revokeObjectURL(prev);
+              }
+              return nextUrl;
+            });
+          } catch {
+            setAvatarUrl((prev) => {
+              if (prev) {
+                URL.revokeObjectURL(prev);
+              }
+              return null;
+            });
+          }
         } catch {
           setProfile(null);
         }
@@ -55,6 +67,14 @@ export default function UserProfile() {
     loadUserPage();
   }, [isAuthLoading, isAuthenticated, match, params?.userId, setLocation]);
 
+  useEffect(() => {
+    return () => {
+      if (avatarUrl) {
+        URL.revokeObjectURL(avatarUrl);
+      }
+    };
+  }, [avatarUrl]);
+
   if (isAuthLoading || isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -63,7 +83,7 @@ export default function UserProfile() {
     );
   }
 
-  if (!isAuthenticated || !account) {
+  if (!isAuthenticated || !params?.userId) {
     return null;
   }
 
@@ -72,7 +92,7 @@ export default function UserProfile() {
       <header className="border-b border-border bg-card shadow-sm">
         <div className="container py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-primary">{profile?.username || account.username}</h1>
+            <h1 className="text-3xl font-bold text-primary">{profile?.username || params.userId}</h1>
             <p className="text-sm text-muted-foreground">User profile and publications</p>
           </div>
           <Button
@@ -90,29 +110,44 @@ export default function UserProfile() {
           <Card className="shadow-md">
             <CardHeader>
               <CardTitle className="text-2xl">User Overview</CardTitle>
-              <CardDescription>Information returned from auth and profile endpoints</CardDescription>
+              <CardDescription>Information returned from profile and feed endpoints</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-3 rounded-lg bg-secondary/30 p-4">
                 <User size={20} className="text-accent" />
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Username</p>
-                  <p className="text-lg font-semibold text-foreground">{account.username}</p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">User ID</p>
+                  <p className="text-lg font-semibold text-foreground">{params.userId}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-lg bg-secondary/30 p-4">
-                <Calendar size={20} className="text-accent" />
+                <Mail size={20} className="text-accent" />
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Member Since</p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p>
                   <p className="text-lg font-semibold text-foreground">
-                    {new Date(account.created_at).toLocaleDateString()}
+                    {user?.id === params.userId ? user.email : 'Only available for your own account'}
                   </p>
                 </div>
               </div>
               {profile ? (
-                <div className="rounded-lg bg-secondary/30 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Public Profile Name</p>
-                  <p className="mt-1 text-2xl font-bold text-foreground">{profile.username}</p>
+                <div className="rounded-lg bg-secondary/30 p-4 space-y-4">
+                  <div className="flex items-center gap-3">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt="User avatar" className="h-14 w-14 rounded-full object-cover" />
+                    ) : (
+                      <div className="h-14 w-14 rounded-full bg-secondary flex items-center justify-center">
+                        <User size={20} className="text-muted-foreground" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Public Profile Name</p>
+                      <p className="mt-1 text-2xl font-bold text-foreground">{profile.username}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Bio</p>
+                    <p className="mt-1 whitespace-pre-wrap text-foreground">{profile.bio || 'No bio yet.'}</p>
+                  </div>
                 </div>
               ) : (
                 <div className="rounded-lg bg-secondary/30 p-4 text-muted-foreground">

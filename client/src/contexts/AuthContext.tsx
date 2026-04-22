@@ -2,12 +2,10 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   UserResponse, 
   getToken, 
-  setToken, 
-  clearToken, 
+  setToken,
+  clearSession,
   getCurrentUserId, 
   setCurrentUserId,
-  getCurrentUsername,
-  setCurrentUsername,
   getCurrentEmail,
   setCurrentEmail,
   getCurrentCreatedAt,
@@ -32,15 +30,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const token = getToken();
     const userId = getCurrentUserId();
-    const username = getCurrentUsername();
     const email = getCurrentEmail();
     const createdAt = getCurrentCreatedAt();
     
-    if (token && userId && username && email) {
+    if (token && userId && email) {
       // Restore session from cookies/localStorage
       setUser({
         id: userId,
-        username: username,
         email: email,
         created_at: createdAt || new Date().toISOString(),
       });
@@ -53,7 +49,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Store in cookies (with localStorage fallback)
     setToken(token);
     setCurrentUserId(userData.id);
-    setCurrentUsername(userData.username);
     setCurrentEmail(userData.email);
     setCurrentCreatedAt(userData.created_at);
     
@@ -62,18 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    // Clear cookies and localStorage
-    clearToken();
-    setCurrentUserId('');
-    setCurrentUsername('');
-    setCurrentEmail('');
-    setCurrentCreatedAt('');
-    localStorage.removeItem('user_id');
-    localStorage.removeItem('username');
-    localStorage.removeItem('email');
-    localStorage.removeItem('created_at');
-    
-    // Clear state
+    clearSession();
     setUser(null);
   };
 

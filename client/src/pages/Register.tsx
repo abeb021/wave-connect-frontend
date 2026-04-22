@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { registerUser, loginUser, getToken, getUserByUsername } from '@/lib/api';
+import { registerUser, loginUser, getToken, getUserById } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -18,7 +18,6 @@ export default function Register() {
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
-    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -45,14 +44,12 @@ export default function Register() {
     try {
       // Step 1: Register the user
       await registerUser({
-        username: formData.username,
         email: formData.email,
         password: formData.password,
       });
 
       // Step 2: Automatically log in after registration
       await loginUser({
-        username: formData.username,
         email: formData.email,
         password: formData.password,
       });
@@ -64,14 +61,14 @@ export default function Register() {
         throw new Error('No token received from login');
       }
 
-      // Step 3: Fetch user data by username
-      const userData = await getUserByUsername(formData.username);
+      // Step 3: Fetch current user data from auth service
+      const userData = await getUserById();
       
       // Step 4: Update auth context with user data
       login(userData, token);
       
       toast.success('Account created successfully!');
-      setLocation('/feed');
+      setLocation('/profile?onboarding=1');
     } catch (error) {
       console.error('Registration error:', error);
       toast.error(error instanceof Error ? error.message : 'Registration failed');
@@ -91,22 +88,6 @@ export default function Register() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-medium text-foreground">
-                Username
-              </label>
-              <Input
-                id="username"
-                name="username"
-                type="text"
-                placeholder="Choose a username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                className="border-border focus:ring-accent"
-              />
-            </div>
-
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium text-foreground">
                 Email

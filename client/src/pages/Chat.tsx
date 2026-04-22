@@ -7,9 +7,8 @@ import {
   connectChatWebSocket,
   deleteMessage,
   getConversation,
-  getUserById,
   getConversationWithPeer,
-  getUserByUsername,
+  getProfileById,
   Message,
   sendChatSocketMessage,
   updateMessage,
@@ -49,7 +48,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [allMessages, setAllMessages] = useState<ChatMessage[]>([]);
   const [selectedUserInput, setSelectedUserInput] = useState('');
-  const [selectedUsername, setSelectedUsername] = useState('');
+  const [selectedLabel, setSelectedLabel] = useState('');
   const [peerId, setPeerId] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [isResolvingPeer, setIsResolvingPeer] = useState(false);
@@ -88,6 +87,24 @@ export default function Chat() {
   }, [isAuthLoading, isAuthenticated, setLocation]);
 
   useEffect(() => {
+    const ensureProfileExists = async () => {
+      if (isAuthLoading || !isAuthenticated || !user?.id) {
+        return;
+      }
+
+      try {
+        await getProfileById(user.id);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('ID not found')) {
+          setLocation('/profile?onboarding=1');
+        }
+      }
+    };
+
+    ensureProfileExists();
+  }, [isAuthLoading, isAuthenticated, user?.id, setLocation]);
+
+  useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
@@ -112,7 +129,7 @@ export default function Chat() {
       const resolvedEntries = await Promise.all(
         peerIds.map(async (id) => {
           try {
-            const peer = await getUserById(id);
+            const peer = await getProfileById(id);
             return [id, peer.username] as const;
           } catch {
             return [id, id] as const;
@@ -128,7 +145,7 @@ export default function Chat() {
 
   useEffect(() => {
     const loadAllMessages = async () => {
-      if (!isAuthenticated || selectedUsername) {
+      if (!isAuthenticated || peerId) {
         return;
       }
 
@@ -145,7 +162,7 @@ export default function Chat() {
     };
 
     loadAllMessages();
-  }, [isAuthenticated, selectedUsername]);
+  }, [isAuthenticated, peerId]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -212,7 +229,7 @@ export default function Chat() {
 
   useEffect(() => {
     const loadConversation = async () => {
-      if (!isAuthenticated || !selectedUsername || !peerId) {
+      if (!isAuthenticated || !peerId) {
         setMessages([]);
         return;
       }
@@ -230,7 +247,7 @@ export default function Chat() {
     };
 
     loadConversation();
-  }, [isAuthenticated, selectedUsername, peerId]);
+  }, [isAuthenticated, peerId]);
 
   if (isAuthLoading) {
     return (
@@ -250,7 +267,7 @@ export default function Chat() {
       return;
     }
 
-    if (!selectedUsername || !peerId) {
+    if (!peerId) {
       toast.error('Please enter a recipient');
       return;
     }
@@ -269,19 +286,30 @@ export default function Chat() {
 
   const handleOpenConversation = async () => {
     if (!selectedUserInput.trim()) {
-      toast.error('Enter a username');
+      toast.error('Enter a user ID');
       return;
     }
 
     setIsResolvingPeer(true);
     try {
-      const peer = await getUserByUsername(selectedUserInput.trim());
-      setUserLabels((prev) => ({ ...prev, [peer.id]: peer.username }));
-      setPeerId(peer.id);
-      setSelectedUsername(peer.username);
+      const nextPeerId = selectedUserInput.trim();
+      let label = nextPeerId === user?.id ? NOTEBOOK_LABEL : nextPeerId;
+
+      if (nextPeerId !== user?.id) {
+        try {
+          const profile = await getProfileById(nextPeerId);
+          label = profile.username || nextPeerId;
+          setUserLabels((prev) => ({ ...prev, [nextPeerId]: label }));
+        } catch {
+          label = userLabels[nextPeerId] || nextPeerId;
+        }
+      }
+
+      setPeerId(nextPeerId);
+      setSelectedLabel(label);
     } catch (error) {
       setPeerId('');
-      setSelectedUsername('');
+      setSelectedLabel('');
       setMessages([]);
       toast.error(error instanceof Error ? error.message : 'Failed to find user');
     } finally {
@@ -292,13 +320,13 @@ export default function Chat() {
   const handleSelectChat = (nextPeerId: string) => {
     setPeerId(nextPeerId);
     const nextLabel = nextPeerId === user?.id ? NOTEBOOK_LABEL : userLabels[nextPeerId] || nextPeerId;
-    setSelectedUsername(nextLabel);
-    setSelectedUserInput(nextLabel === NOTEBOOK_LABEL ? '' : nextLabel);
+    setSelectedLabel(nextLabel);
+    setSelectedUserInput(nextPeerId === user?.id ? '' : nextPeerId);
   };
 
   const handleLeaveChat = () => {
     setPeerId('');
-    setSelectedUsername('');
+    setSelectedLabel('');
     setSelectedUserInput('');
     setMessages([]);
   };
@@ -437,7 +465,7 @@ export default function Chat() {
               <div className="space-y-2 border-b border-border pb-4">
                 <Input
                   type="text"
-                  placeholder="Find user by username..."
+                  placeholder="Open chat by user ID..."
                   value={selectedUserInput}
                   onChange={(e) => setSelectedUserInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -502,13 +530,13 @@ export default function Chat() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <CardTitle className="text-lg">
-                    {selectedUsername ? selectedUsername : 'Messages'}
+                    {selectedLabel ? selectedLabel : 'Messages'}
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    {selectedUsername ? 'Conversation' : 'Select a conversation from the left'}
+                    {selectedLabel ? 'Conversation' : 'Select a conversation from the left'}
                   </CardDescription>
                 </div>
-                {selectedUsername && (
+                {selectedLabel && (
                   <Button onClick={handleLeaveChat} variant="outline" size="sm" className="border-border">
                     Leave Chat
                   </Button>
@@ -517,14 +545,14 @@ export default function Chat() {
             </CardHeader>
 
             <CardContent className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
-              {selectedUsername && isConversationLoading ? (
+              {selectedLabel && isConversationLoading ? (
                 <div className="flex items-center justify-center h-full text-center">
                   <p className="text-muted-foreground">Loading conversation...</p>
                 </div>
-              ) : !selectedUsername ? (
+              ) : !selectedLabel ? (
                 <div className="flex items-center justify-center h-full text-center">
                   <p className="text-muted-foreground">
-                    Select a chat from the list or open a new one by username.
+                    Select a chat from the list or open a new one by user ID.
                   </p>
                 </div>
               ) : messages.length === 0 ? (
@@ -631,12 +659,12 @@ export default function Chat() {
                       handleSendMessage();
                     }
                   }}
-                  disabled={!selectedUsername}
+                  disabled={!selectedLabel}
                   className="border-border focus:ring-accent"
                 />
                 <Button
                   onClick={handleSendMessage}
-                  disabled={!selectedUsername || !peerId || !newMessage.trim()}
+                  disabled={!selectedLabel || !peerId || !newMessage.trim()}
                   className="bg-accent hover:bg-accent/90 text-accent-foreground px-4"
                 >
                   <Send size={18} />

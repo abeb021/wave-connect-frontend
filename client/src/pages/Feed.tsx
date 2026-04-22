@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { createComment, createPublication, getCommentsByPublication, getFeed, updatePublication, deletePublication, type Comment } from '@/lib/api';
+import { createComment, createPublication, getCommentsByPublication, getFeed, getProfileById, updatePublication, deletePublication, type Comment } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Heart, MessageCircle, Trash2, Edit2 } from 'lucide-react';
@@ -49,9 +49,16 @@ export default function Feed() {
     const loadFeed = async () => {
       setIsFeedLoading(true);
       try {
+        if (user?.id) {
+          await getProfileById(user.id);
+        }
         const feed = await getFeed();
         setPublications(feed);
       } catch (error) {
+        if (error instanceof Error && error.message.includes('ID not found')) {
+          setLocation('/profile?onboarding=1');
+          return;
+        }
         toast.error(error instanceof Error ? error.message : 'Failed to load feed');
       } finally {
         setIsFeedLoading(false);
@@ -59,7 +66,7 @@ export default function Feed() {
     };
 
     loadFeed();
-  }, [isAuthLoading, isAuthenticated]);
+  }, [isAuthLoading, isAuthenticated, user?.id, setLocation]);
 
   if (isAuthLoading) {
     return (
@@ -204,7 +211,7 @@ export default function Feed() {
         <div className="container py-4 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-primary">Wave Connect</h1>
-            <p className="text-sm text-muted-foreground">Welcome, {user?.username}</p>
+            <p className="text-sm text-muted-foreground">Welcome, {user?.email}</p>
           </div>
           <Button
             onClick={() => setLocation('/chat')}
