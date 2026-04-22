@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { createPublication, getFeed, updatePublication, deletePublication } from '@/lib/api';
+import { createComment, createPublication, getCommentsByPublication, getFeed, updatePublication, deletePublication, type Comment } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Heart, MessageCircle, Trash2, Edit2 } from 'lucide-react';
@@ -21,6 +21,10 @@ interface PublicationItem {
   time_created: string;
   isEditing?: boolean;
   editText?: string;
+  comments?: Comment[];
+  isCommentsOpen?: boolean;
+  isCommentsLoading?: boolean;
+  newCommentText?: string;
 }
 
 export default function Feed() {
@@ -126,6 +130,70 @@ export default function Feed() {
       toast.success('Publication deleted!');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete publication');
+    }
+  };
+
+  const handleToggleComments = async (id: string) => {
+    const targetPublication = publications.find((publication) => publication.id === id);
+    if (!targetPublication) {
+      return;
+    }
+
+    if (targetPublication.isCommentsOpen) {
+      setPublications((prev) =>
+        prev.map((publication) =>
+          publication.id === id ? { ...publication, isCommentsOpen: false } : publication
+        )
+      );
+      return;
+    }
+
+    setPublications((prev) =>
+      prev.map((publication) =>
+        publication.id === id ? { ...publication, isCommentsOpen: true, isCommentsLoading: true } : publication
+      )
+    );
+
+    try {
+      const comments = await getCommentsByPublication(id);
+      setPublications((prev) =>
+        prev.map((publication) =>
+          publication.id === id ? { ...publication, comments, isCommentsLoading: false } : publication
+        )
+      );
+    } catch (error) {
+      setPublications((prev) =>
+        prev.map((publication) =>
+          publication.id === id ? { ...publication, isCommentsLoading: false } : publication
+        )
+      );
+      toast.error(error instanceof Error ? error.message : 'Failed to load comments');
+    }
+  };
+
+  const handleCreateComment = async (id: string, text: string) => {
+    if (!text.trim()) {
+      toast.error('Comment cannot be empty');
+      return;
+    }
+
+    try {
+      const comment = await createComment(id, { text });
+      setPublications((prev) =>
+        prev.map((publication) =>
+          publication.id === id
+            ? {
+                ...publication,
+                comments: [comment, ...(publication.comments || [])],
+                newCommentText: '',
+                isCommentsOpen: true,
+              }
+            : publication
+        )
+      );
+      toast.success('Comment added!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to add comment');
     }
   };
 
@@ -288,11 +356,63 @@ export default function Feed() {
                         <Heart size={16} />
                         <span className="text-sm">Like</span>
                       </button>
-                      <button className="flex items-center gap-2 text-muted-foreground hover:text-accent transition-colors">
+                      <button
+                        onClick={() => handleToggleComments(pub.id)}
+                        className="flex items-center gap-2 text-muted-foreground hover:text-accent transition-colors"
+                      >
                         <MessageCircle size={16} />
-                        <span className="text-sm">Reply</span>
+                        <span className="text-sm">Comments</span>
                       </button>
                     </div>
+
+                    {pub.isCommentsOpen && (
+                      <div className="space-y-4 rounded-lg bg-secondary/20 p-4">
+                        <div className="space-y-2">
+                          <textarea
+                            value={pub.newCommentText || ''}
+                            onChange={(e) =>
+                              setPublications((prev) =>
+                                prev.map((publication) =>
+                                  publication.id === pub.id
+                                    ? { ...publication, newCommentText: e.target.value }
+                                    : publication
+                                )
+                              )
+                            }
+                            placeholder="Write a comment..."
+                            className="w-full resize-none rounded-md border border-border bg-background p-3 text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                            rows={2}
+                          />
+                          <Button
+                            onClick={() => handleCreateComment(pub.id, pub.newCommentText || '')}
+                            className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                            size="sm"
+                          >
+                            Add Comment
+                          </Button>
+                        </div>
+
+                        {pub.isCommentsLoading ? (
+                          <p className="text-sm text-muted-foreground">Loading comments...</p>
+                        ) : !pub.comments || pub.comments.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No comments yet.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {pub.comments.map((comment) => (
+                              <div key={comment.id} className="rounded-md bg-background p-3">
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <p className="text-sm font-medium text-foreground">{comment.user_id}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {new Date(comment.time_created).toLocaleString()}
+                                  </p>
+                                </div>
+                                <p className="whitespace-pre-wrap text-sm text-foreground">{comment.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))

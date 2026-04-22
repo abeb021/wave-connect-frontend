@@ -29,6 +29,18 @@ export interface CreatePublicationRequest {
   text: string;
 }
 
+export interface Comment {
+  id: string;
+  pub_id: string;
+  text: string;
+  user_id: string;
+  time_created: string;
+}
+
+export interface CreateCommentRequest {
+  text: string;
+}
+
 export interface Profile {
   username: string;
   id: string;
@@ -279,6 +291,14 @@ export const updatePublication = async (id: string, data: UpdateTextRequest): Pr
 
 export const deletePublication = async (id: string): Promise<void> => {
   await makeRequest(`/api/feed/${id}`, 'DELETE');
+};
+
+export const createComment = async (publicationId: string, data: CreateCommentRequest): Promise<Comment> => {
+  return makeRequest(`/api/feed/${publicationId}/comment/`, 'POST', data);
+};
+
+export const getCommentsByPublication = async (publicationId: string): Promise<Comment[]> => {
+  return makeRequest(`/api/feed/${publicationId}/comment/`, 'GET');
 };
 
 // Profile endpoints
