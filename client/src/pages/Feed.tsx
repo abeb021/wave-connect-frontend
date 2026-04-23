@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import AppHeader from '@/components/AppHeader';
 import {
@@ -9,6 +10,7 @@ import {
   deletePublication,
   getCommentsByPublication,
   getFeed,
+  getProfileAvatarBlob,
   getProfileById,
   updatePublication,
   type Comment,
@@ -38,6 +40,8 @@ export default function Feed() {
   const [isLoading, setIsLoading] = useState(false);
   const [isFeedLoading, setIsFeedLoading] = useState(true);
   const [usernamesById, setUsernamesById] = useState<Record<string, string>>({});
+  const [avatarsById, setAvatarsById] = useState<Record<string, string>>({});
+  const avatarUrlsRef = useRef<Record<string, string>>({});
 
   const resolveUsernames = async (userIds: string[]) => {
     const uniqueIds = Array.from(new Set(userIds.filter(Boolean))).filter((id) => !usernamesById[id]);
@@ -60,6 +64,36 @@ export default function Feed() {
     setUsernamesById((prev) => ({ ...prev, ...Object.fromEntries(resolved) }));
   };
 
+  const resolveAvatars = async (userIds: string[]) => {
+    const uniqueIds = Array.from(new Set(userIds.filter(Boolean))).filter((id) => !avatarUrlsRef.current[id]);
+
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    const resolved = await Promise.all(
+      uniqueIds.map(async (id) => {
+        try {
+          const blob = await getProfileAvatarBlob(id);
+          return [id, URL.createObjectURL(blob)] as const;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const nextEntries = Object.fromEntries(
+      resolved.filter((entry): entry is readonly [string, string] => entry !== null)
+    );
+
+    if (Object.keys(nextEntries).length === 0) {
+      return;
+    }
+
+    avatarUrlsRef.current = { ...avatarUrlsRef.current, ...nextEntries };
+    setAvatarsById((prev) => ({ ...prev, ...nextEntries }));
+  };
+
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
       setLocation('/login');
@@ -80,7 +114,8 @@ export default function Feed() {
 
         const feed = await getFeed();
         setPublications(feed);
-        await resolveUsernames(feed.map((publication) => publication.user_id));
+        const feedUserIds = feed.map((publication) => publication.user_id);
+        await Promise.all([resolveUsernames(feedUserIds), resolveAvatars(feedUserIds)]);
       } catch (error) {
         if (error instanceof Error && error.message.includes('ID not found')) {
           setLocation('/profile?onboarding=1');
@@ -94,6 +129,12 @@ export default function Feed() {
 
     loadFeed();
   }, [isAuthLoading, isAuthenticated, user?.id, setLocation]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(avatarUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   const welcomeText = useMemo(() => (user?.email ? `Welcome, ${user.email}` : undefined), [user?.email]);
 
@@ -120,7 +161,7 @@ export default function Feed() {
       const publication = await createPublication({ text: newPostText });
       setPublications((prev) => [publication, ...prev]);
       setNewPostText('');
-      await resolveUsernames([publication.user_id]);
+      await Promise.all([resolveUsernames([publication.user_id]), resolveAvatars([publication.user_id])]);
       toast.success('Publication created');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create publication');
@@ -290,14 +331,31 @@ export default function Feed() {
                   <Card key={publication.id} className="shadow-sm transition-shadow hover:shadow-md">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <button onClick={() => setLocation(`/users/${publication.user_id}`)} className="text-left">
-                            <CardTitle className="text-base hover:text-accent">{authorName}</CardTitle>
+                        <div className="flex items-start gap-3">
+                          <button
+                            onClick={() => setLocation(`/users/${publication.user_id}`)}
+                            className="rounded-full transition-opacity hover:opacity-85"
+                            aria-label="Open author profile"
+                          >
+                            <Avatar className="size-10 border border-border/80">
+                              {avatarsById[publication.user_id] ? (
+                                <AvatarImage src={avatarsById[publication.user_id]} alt={authorName} />
+                              ) : null}
+                              <AvatarFallback className="text-xs font-semibold">
+                                {(authorName[0] || 'U').toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
                           </button>
-                          <p className="text-xs text-muted-foreground">post id: {publication.id}</p>
-                          <CardDescription className="text-xs">
-                            {new Date(publication.time_created).toLocaleString()}
-                          </CardDescription>
+
+                          <div className="space-y-0.5">
+                            <button onClick={() => setLocation(`/users/${publication.user_id}`)} className="text-left">
+                              <CardTitle className="text-base hover:text-accent">{authorName}</CardTitle>
+                            </button>
+                            <p className="text-xs text-muted-foreground">post id: {publication.id}</p>
+                            <CardDescription className="text-xs">
+                              {new Date(publication.time_created).toLocaleString()}
+                            </CardDescription>
+                          </div>
                         </div>
 
                         {publication.user_id === user?.id ? (

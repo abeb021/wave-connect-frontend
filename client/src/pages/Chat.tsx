@@ -3,12 +3,14 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import AppHeader from '@/components/AppHeader';
 import {
   connectChatWebSocket,
   deleteMessage,
   getConversation,
   getConversationWithPeer,
+  getProfileAvatarBlob,
   getProfileById,
   getProfileByUsername,
   sendChatSocketMessage,
@@ -17,7 +19,7 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Edit2, ExternalLink, Send, Trash2 } from 'lucide-react';
+import { Edit2, Send, Trash2 } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -51,6 +53,7 @@ export default function Chat() {
   const [isConversationLoading, setIsConversationLoading] = useState(false);
   const [isAllMessagesLoading, setIsAllMessagesLoading] = useState(false);
   const [userLabels, setUserLabels] = useState<Record<string, string>>({});
+  const [peerAvatarUrl, setPeerAvatarUrl] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -246,6 +249,60 @@ export default function Chat() {
     loadConversation();
   }, [isAuthenticated, peerId]);
 
+  useEffect(() => {
+    if (!peerId) {
+      setPeerAvatarUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+      return;
+    }
+
+    let disposed = false;
+
+    const loadPeerAvatar = async () => {
+      try {
+        const avatarBlob = await getProfileAvatarBlob(peerId);
+        if (disposed) {
+          return;
+        }
+        const nextUrl = URL.createObjectURL(avatarBlob);
+        setPeerAvatarUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev);
+          }
+          return nextUrl;
+        });
+      } catch {
+        if (disposed) {
+          return;
+        }
+        setPeerAvatarUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev);
+          }
+          return null;
+        });
+      }
+    };
+
+    loadPeerAvatar();
+
+    return () => {
+      disposed = true;
+    };
+  }, [peerId]);
+
+  useEffect(() => {
+    return () => {
+      if (peerAvatarUrl) {
+        URL.revokeObjectURL(peerAvatarUrl);
+      }
+    };
+  }, [peerAvatarUrl]);
+
   if (isAuthLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -327,6 +384,13 @@ export default function Chat() {
     setSelectedLabel('');
     setSelectedUsername('');
     setMessages([]);
+  };
+
+  const handleOpenPeerProfile = () => {
+    if (!peerId) {
+      return;
+    }
+    setLocation(peerId === user?.id ? '/profile' : `/users/${peerId}`);
   };
 
   const chatList: ChatListItem[] = (() => {
@@ -510,7 +574,29 @@ export default function Chat() {
             <CardHeader className="border-b border-border bg-card/95">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <CardTitle className="text-lg">{selectedLabel || 'Messages'}</CardTitle>
+                  <CardTitle className="text-lg">
+                    {selectedLabel ? (
+                      <span className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleOpenPeerProfile}
+                          className="rounded-full transition-opacity hover:opacity-85"
+                          aria-label="Open profile"
+                          title="Open profile"
+                        >
+                          <Avatar className="size-8 border border-border/80">
+                            {peerAvatarUrl ? <AvatarImage src={peerAvatarUrl} alt={selectedLabel} /> : null}
+                            <AvatarFallback className="text-xs font-semibold">
+                              {(selectedLabel[0] || 'U').toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        </button>
+                        {selectedLabel}
+                      </span>
+                    ) : (
+                      'Messages'
+                    )}
+                  </CardTitle>
                   <CardDescription className="text-xs">
                     {selectedLabel ? 'Conversation' : 'Select conversation from left'}
                   </CardDescription>
@@ -518,16 +604,6 @@ export default function Chat() {
 
                 {selectedLabel ? (
                   <div className="flex items-center gap-2">
-                    {peerId ? (
-                      <Button
-                        onClick={() => setLocation(peerId === user?.id ? '/profile' : `/users/${peerId}`)}
-                        variant="outline"
-                        size="sm"
-                        className="border-border"
-                      >
-                        <ExternalLink size={14} className="mr-1" /> View Profile
-                      </Button>
-                    ) : null}
                     <Button onClick={handleLeaveChat} variant="outline" size="sm" className="border-border">
                       Leave Chat
                     </Button>

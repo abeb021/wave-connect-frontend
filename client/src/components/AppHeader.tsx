@@ -14,7 +14,7 @@ export default function AppHeader({ title, subtitle, actions, className }: AppHe
     <header className={cn('border-b border-border bg-card/90 backdrop-blur-sm', className)}>
       <div className="container flex items-center justify-between gap-3 py-4">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold text-primary md:text-3xl">{title}</h1>
+          <h1 className="truncate text-2xl font-semibold text-accent md:text-3xl">{title}</h1>
           {subtitle ? <p className="truncate text-sm text-muted-foreground">{subtitle}</p> : null}
         </div>
         <div className="flex items-center gap-2">
