@@ -370,6 +370,10 @@ export const getProfileById = async (id: string): Promise<Profile> => {
   return makeRequest(`/api/profile/${id}`, 'GET');
 };
 
+export const getProfileByUsername = async (username: string): Promise<Profile> => {
+  return makeRequest(`/api/profile/username/${encodeURIComponent(username)}`, 'GET');
+};
+
 export const updateProfile = async (data: CreateProfileRequest): Promise<void> => {
   await makeRequest('/api/profile/', 'PUT', data);
 };

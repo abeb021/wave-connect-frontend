@@ -1,27 +1,23 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import AppHeader from '@/components/AppHeader';
 import {
   connectChatWebSocket,
   deleteMessage,
   getConversation,
   getConversationWithPeer,
   getProfileById,
-  Message,
+  getProfileByUsername,
   sendChatSocketMessage,
   updateMessage,
+  type Message,
 } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Send, Trash2, Edit2 } from 'lucide-react';
-
-/**
- * Modern Minimalist Design: Chat Page
- * - Message-based layout with clear sender/receiver distinction
- * - Conversation-style interface
- */
+import { Edit2, ExternalLink, Send, Trash2 } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -47,7 +43,7 @@ export default function Chat() {
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [allMessages, setAllMessages] = useState<ChatMessage[]>([]);
-  const [selectedUserInput, setSelectedUserInput] = useState('');
+  const [selectedUsername, setSelectedUsername] = useState('');
   const [selectedLabel, setSelectedLabel] = useState('');
   const [peerId, setPeerId] = useState('');
   const [newMessage, setNewMessage] = useState('');
@@ -93,7 +89,8 @@ export default function Chat() {
       }
 
       try {
-        await getProfileById(user.id);
+        const self = await getProfileById(user.id);
+        setUserLabels((prev) => ({ ...prev, [user.id]: self.username || NOTEBOOK_LABEL }));
       } catch (error) {
         if (error instanceof Error && error.message.includes('ID not found')) {
           setLocation('/profile?onboarding=1');
@@ -236,7 +233,7 @@ export default function Chat() {
 
       setIsConversationLoading(true);
       try {
-      const conversation = await getConversationWithPeer(peerId);
+        const conversation = await getConversationWithPeer(peerId);
         setMessages(conversation);
       } catch (error) {
         setMessages([]);
@@ -251,7 +248,7 @@ export default function Chat() {
 
   if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-muted-foreground">Restoring session...</p>
       </div>
     );
@@ -268,7 +265,7 @@ export default function Chat() {
     }
 
     if (!peerId) {
-      toast.error('Please enter a recipient');
+      toast.error('Pick recipient first');
       return;
     }
 
@@ -285,33 +282,34 @@ export default function Chat() {
   };
 
   const handleOpenConversation = async () => {
-    if (!selectedUserInput.trim()) {
-      toast.error('Enter a user ID');
+    const username = selectedUsername.trim();
+    if (!username) {
+      toast.error('Enter username');
       return;
     }
 
     setIsResolvingPeer(true);
-    try {
-      const nextPeerId = selectedUserInput.trim();
-      let label = nextPeerId === user?.id ? NOTEBOOK_LABEL : nextPeerId;
 
-      if (nextPeerId !== user?.id) {
-        try {
-          const profile = await getProfileById(nextPeerId);
-          label = profile.username || nextPeerId;
-          setUserLabels((prev) => ({ ...prev, [nextPeerId]: label }));
-        } catch {
-          label = userLabels[nextPeerId] || nextPeerId;
+    try {
+      if (username.toLowerCase() === NOTEBOOK_LABEL.toLowerCase()) {
+        if (!user?.id) {
+          throw new Error('User not found');
         }
+        setPeerId(user.id);
+        setSelectedLabel(NOTEBOOK_LABEL);
+        return;
       }
 
-      setPeerId(nextPeerId);
-      setSelectedLabel(label);
+      const profile = await getProfileByUsername(username);
+      setPeerId(profile.id);
+      setSelectedLabel(profile.username || username);
+      setUserLabels((prev) => ({ ...prev, [profile.id]: profile.username || username }));
+      setSelectedUsername(profile.username || username);
     } catch (error) {
       setPeerId('');
       setSelectedLabel('');
       setMessages([]);
-      toast.error(error instanceof Error ? error.message : 'Failed to find user');
+      toast.error(error instanceof Error ? error.message : 'Username not found');
     } finally {
       setIsResolvingPeer(false);
     }
@@ -321,13 +319,13 @@ export default function Chat() {
     setPeerId(nextPeerId);
     const nextLabel = nextPeerId === user?.id ? NOTEBOOK_LABEL : userLabels[nextPeerId] || nextPeerId;
     setSelectedLabel(nextLabel);
-    setSelectedUserInput(nextPeerId === user?.id ? '' : nextPeerId);
+    setSelectedUsername(nextLabel);
   };
 
   const handleLeaveChat = () => {
     setPeerId('');
     setSelectedLabel('');
-    setSelectedUserInput('');
+    setSelectedUsername('');
     setMessages([]);
   };
 
@@ -383,9 +381,7 @@ export default function Chat() {
 
   const handleEditMessage = (id: string, currentText: string) => {
     setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === id ? { ...msg, isEditing: true, editText: currentText } : msg
-      )
+      prev.map((msg) => (msg.id === id ? { ...msg, isEditing: true, editText: currentText } : msg))
     );
   };
 
@@ -398,16 +394,12 @@ export default function Chat() {
     try {
       await updateMessage(id, { text: newText });
       setAllMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === id ? { ...msg, text: newText, isEditing: false, editText: undefined } : msg
-        )
+        prev.map((msg) => (msg.id === id ? { ...msg, text: newText, isEditing: false, editText: undefined } : msg))
       );
       setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === id ? { ...msg, text: newText, isEditing: false, editText: undefined } : msg
-        )
+        prev.map((msg) => (msg.id === id ? { ...msg, text: newText, isEditing: false, editText: undefined } : msg))
       );
-      toast.success('Message updated!');
+      toast.success('Message updated');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update message');
     }
@@ -422,7 +414,7 @@ export default function Chat() {
       await deleteMessage(id);
       setAllMessages((prev) => prev.filter((msg) => msg.id !== id));
       setMessages((prev) => prev.filter((msg) => msg.id !== id));
-      toast.success('Message deleted!');
+      toast.success('Message deleted');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete message');
     }
@@ -430,62 +422,49 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card shadow-sm">
-        <div className="container py-4 flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-primary">Messages</h1>
-          <div className="flex items-center gap-3">
-            <Button
-              onClick={() => setLocation('/profile')}
-              variant="outline"
-              className="border-border hover:bg-secondary"
-            >
-              Profile
-            </Button>
-            <Button
-              onClick={() => setLocation('/feed')}
-              variant="outline"
-              className="border-border hover:bg-secondary"
-            >
-              Back to Feed
-            </Button>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        title="Messages"
+        subtitle={selectedLabel ? `Chat with ${selectedLabel}` : 'Search by username'}
+        actions={
+          <Button onClick={() => setLocation('/feed')} variant="outline" className="border-border">
+            Back to Feed
+          </Button>
+        }
+      />
 
-      <main className="container py-8">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 gap-6 lg:grid-cols-5 lg:items-start">
-          {/* Sidebar - Conversations */}
+      <main className="container py-8 md:py-10">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 lg:grid-cols-5 lg:items-start">
           <Card className="shadow-md lg:col-span-2 lg:h-[calc(100vh-10rem)]">
             <CardHeader>
               <CardTitle className="text-lg">Conversations</CardTitle>
-              <CardDescription>Find a user or continue an existing chat</CardDescription>
+              <CardDescription>Find user by username or continue existing chat</CardDescription>
             </CardHeader>
-            <CardContent className="flex h-full min-h-0 flex-col space-y-2">
+
+            <CardContent className="flex h-full min-h-0 flex-col space-y-3">
               <div className="space-y-2 border-b border-border pb-4">
                 <Input
                   type="text"
-                  placeholder="Open chat by user ID..."
-                  value={selectedUserInput}
-                  onChange={(e) => setSelectedUserInput(e.target.value)}
+                  placeholder="Search username..."
+                  value={selectedUsername}
+                  onChange={(e) => setSelectedUsername(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       handleOpenConversation();
                     }
                   }}
-                  className="border-border focus:ring-accent"
+                  className="border-border"
                 />
                 <Button
                   onClick={handleOpenConversation}
-                  disabled={isResolvingPeer || !selectedUserInput.trim()}
-                  className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+                  disabled={isResolvingPeer || !selectedUsername.trim()}
+                  className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
                 >
                   {isResolvingPeer ? 'Opening...' : 'Open Chat'}
                 </Button>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                 {isAllMessagesLoading ? (
                   <p className="text-sm text-muted-foreground">Loading chats...</p>
                 ) : chatListWithNotebook.length === 0 ? (
@@ -505,7 +484,10 @@ export default function Chat() {
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <p className="font-semibold text-foreground">{chat.peerLabel}</p>
+                          <div>
+                            <p className="font-semibold text-foreground">{chat.peerLabel}</p>
+                            <p className="text-[11px] text-muted-foreground">{chat.peerId}</p>
+                          </div>
                           <p className="shrink-0 text-xs text-muted-foreground">
                             {chat.lastMessageTime === new Date(0).toISOString()
                               ? ''
@@ -524,49 +506,54 @@ export default function Chat() {
             </CardContent>
           </Card>
 
-          {/* Chat Area */}
-          <Card className="shadow-md flex h-[calc(100vh-10rem)] min-h-0 flex-col lg:col-span-3">
+          <Card className="flex h-[calc(100vh-10rem)] min-h-0 flex-col shadow-md lg:col-span-3">
             <CardHeader className="border-b border-border bg-card/95">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <CardTitle className="text-lg">
-                    {selectedLabel ? selectedLabel : 'Messages'}
-                  </CardTitle>
+                  <CardTitle className="text-lg">{selectedLabel || 'Messages'}</CardTitle>
                   <CardDescription className="text-xs">
-                    {selectedLabel ? 'Conversation' : 'Select a conversation from the left'}
+                    {selectedLabel ? 'Conversation' : 'Select conversation from left'}
                   </CardDescription>
                 </div>
-                {selectedLabel && (
-                  <Button onClick={handleLeaveChat} variant="outline" size="sm" className="border-border">
-                    Leave Chat
-                  </Button>
-                )}
+
+                {selectedLabel ? (
+                  <div className="flex items-center gap-2">
+                    {peerId ? (
+                      <Button
+                        onClick={() => setLocation(peerId === user?.id ? '/profile' : `/users/${peerId}`)}
+                        variant="outline"
+                        size="sm"
+                        className="border-border"
+                      >
+                        <ExternalLink size={14} className="mr-1" /> View Profile
+                      </Button>
+                    ) : null}
+                    <Button onClick={handleLeaveChat} variant="outline" size="sm" className="border-border">
+                      Leave Chat
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </CardHeader>
 
-            <CardContent className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
+            <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
               {selectedLabel && isConversationLoading ? (
-                <div className="flex items-center justify-center h-full text-center">
+                <div className="flex h-full items-center justify-center text-center">
                   <p className="text-muted-foreground">Loading conversation...</p>
                 </div>
               ) : !selectedLabel ? (
-                <div className="flex items-center justify-center h-full text-center">
-                  <p className="text-muted-foreground">
-                    Select a chat from the list or open a new one by user ID.
-                  </p>
+                <div className="flex h-full items-center justify-center text-center">
+                  <p className="text-muted-foreground">Search by username and open conversation.</p>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-center">
-                  <p className="text-muted-foreground">No messages yet. Start the conversation!</p>
+                <div className="flex h-full items-center justify-center text-center">
+                  <p className="text-muted-foreground">No messages yet. Start conversation.</p>
                 </div>
               ) : (
                 messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.sender === user?.id ? 'justify-end' : 'justify-start'}`}
-                  >
+                  <div key={msg.id} className={`flex ${msg.sender === user?.id ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`max-w-xs lg:max-w-md px-4 py-3 rounded-lg ${
+                      className={`max-w-xs rounded-lg px-4 py-3 lg:max-w-md ${
                         msg.sender === user?.id
                           ? 'bg-accent text-accent-foreground'
                           : 'bg-secondary text-foreground'
@@ -578,29 +565,23 @@ export default function Chat() {
                             value={msg.editText || ''}
                             onChange={(e) =>
                               setMessages((prev) =>
-                                prev.map((m) =>
-                                  m.id === msg.id ? { ...m, editText: e.target.value } : m
+                                prev.map((item) =>
+                                  item.id === msg.id ? { ...item, editText: e.target.value } : item
                                 )
                               )
                             }
-                            className="w-full p-2 border border-border rounded bg-background text-foreground text-sm resize-none"
+                            className="w-full resize-none rounded border border-border bg-background p-2 text-sm text-foreground"
                             rows={2}
                           />
                           <div className="flex gap-2">
-                            <Button
-                              onClick={() => handleSaveEdit(msg.id, msg.editText || '')}
-                              size="sm"
-                              className="flex-1 text-xs"
-                            >
+                            <Button onClick={() => handleSaveEdit(msg.id, msg.editText || '')} size="sm" className="flex-1 text-xs">
                               Save
                             </Button>
                             <Button
                               onClick={() =>
                                 setMessages((prev) =>
-                                  prev.map((m) =>
-                                    m.id === msg.id
-                                      ? { ...m, isEditing: false, editText: undefined }
-                                      : m
+                                  prev.map((item) =>
+                                    item.id === msg.id ? { ...item, isEditing: false, editText: undefined } : item
                                   )
                                 )
                               }
@@ -615,27 +596,25 @@ export default function Chat() {
                       ) : (
                         <div>
                           <p className="whitespace-pre-wrap text-sm">{msg.text}</p>
-                          <p className="text-xs opacity-70 mt-1">
-                            {new Date(msg.timeSent).toLocaleTimeString()}
-                          </p>
-                          {msg.sender === user?.id && (
-                            <div className="flex gap-2 mt-2">
+                          <p className="mt-1 text-xs opacity-70">{new Date(msg.timeSent).toLocaleTimeString()}</p>
+                          {msg.sender === user?.id ? (
+                            <div className="mt-2 flex gap-2">
                               <button
                                 onClick={() => handleEditMessage(msg.id, msg.text)}
-                                className="p-1 hover:opacity-75 transition-opacity"
+                                className="p-1 transition-opacity hover:opacity-75"
                                 title="Edit"
                               >
                                 <Edit2 size={14} />
                               </button>
                               <button
                                 onClick={() => handleDeleteMessage(msg.id)}
-                                className="p-1 hover:opacity-75 transition-opacity"
+                                className="p-1 transition-opacity hover:opacity-75"
                                 title="Delete"
                               >
                                 <Trash2 size={14} />
                               </button>
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       )}
                     </div>
@@ -645,8 +624,7 @@ export default function Chat() {
               <div ref={messagesEndRef} />
             </CardContent>
 
-            {/* Message Input */}
-            <div className="border-t border-border p-4 space-y-3">
+            <div className="space-y-2 border-t border-border p-4">
               <div className="flex gap-2">
                 <Input
                   type="text"
@@ -660,19 +638,17 @@ export default function Chat() {
                     }
                   }}
                   disabled={!selectedLabel}
-                  className="border-border focus:ring-accent"
+                  className="border-border"
                 />
                 <Button
                   onClick={handleSendMessage}
                   disabled={!selectedLabel || !peerId || !newMessage.trim()}
-                  className="bg-accent hover:bg-accent/90 text-accent-foreground px-4"
+                  className="bg-accent px-4 text-accent-foreground hover:bg-accent/90"
                 >
                   <Send size={18} />
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Press Enter to send, Shift+Enter for new line
-              </p>
+              <p className="text-xs text-muted-foreground">Press Enter to send, Shift+Enter for newline</p>
             </div>
           </Card>
         </div>

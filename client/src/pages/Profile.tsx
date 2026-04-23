@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import AppHeader from '@/components/AppHeader';
 import {
   createProfile,
   getProfileAvatarBlob,
@@ -206,22 +207,19 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card shadow-sm">
-        <div className="container py-4 flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-primary">Profile</h1>
-          {!isOnboarding && (
-            <Button
-              onClick={() => setLocation('/feed')}
-              variant="outline"
-              className="border-border hover:bg-secondary"
-            >
+      <AppHeader
+        title="Profile"
+        subtitle={isOnboarding ? 'Finish setup' : 'Manage your account'}
+        actions={
+          !isOnboarding ? (
+            <Button onClick={() => setLocation('/feed')} variant="outline" className="border-border">
               Back to Feed
             </Button>
-          )}
-        </div>
-      </header>
+          ) : undefined
+        }
+      />
 
-      <main className="container py-8">
+      <main className="container py-8 md:py-10">
         <div className="max-w-2xl mx-auto">
           {isOnboarding && (
             <Card className="mb-6 border-accent/40 shadow-md">

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useRoute } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import AppHeader from '@/components/AppHeader';
 import { getProfileAvatarBlob, getProfileById, getPublicationsByUser, type Profile as PublicProfile, type Publication } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -89,23 +90,17 @@ export default function UserProfile() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card shadow-sm">
-        <div className="container py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-primary">{profile?.username || params.userId}</h1>
-            <p className="text-sm text-muted-foreground">User profile and publications</p>
-          </div>
-          <Button
-            onClick={() => setLocation('/feed')}
-            variant="outline"
-            className="border-border hover:bg-secondary"
-          >
+      <AppHeader
+        title={profile?.username || params.userId}
+        subtitle="User profile and publications"
+        actions={
+          <Button onClick={() => setLocation('/feed')} variant="outline" className="border-border">
             Back to Feed
           </Button>
-        </div>
-      </header>
+        }
+      />
 
-      <main className="container py-8">
+      <main className="container py-8 md:py-10">
         <div className="mx-auto max-w-3xl space-y-6">
           <Card className="shadow-md">
             <CardHeader>
