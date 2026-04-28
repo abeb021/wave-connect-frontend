@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { registerUser, loginUser, getToken, getUserById } from '@/lib/api';
+import { registerUser, authenticate } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -42,29 +42,15 @@ export default function Register() {
     setIsLoading(true);
 
     try {
-      // Step 1: Register the user
       await registerUser({
         email: formData.email,
         password: formData.password,
       });
 
-      // Step 2: Automatically log in after registration
-      await loginUser({
+      const { user: userData, token } = await authenticate({
         email: formData.email,
         password: formData.password,
       });
-
-      // Token is now stored in cookies/localStorage by loginUser
-      const token = getToken();
-      
-      if (!token) {
-        throw new Error('No token received from login');
-      }
-
-      // Step 3: Fetch current user data from auth service
-      const userData = await getUserById();
-      
-      // Step 4: Update auth context with user data
       login(userData, token);
       
       toast.success('Account created successfully!');

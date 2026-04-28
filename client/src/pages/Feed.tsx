@@ -11,7 +11,6 @@ import {
   getCommentsByPublication,
   getFeed,
   getProfileAvatarBlob,
-  getProfileById,
   updatePublication,
   type Comment,
 } from '@/lib/api';
@@ -24,6 +23,7 @@ interface PublicationItem {
   text: string;
   user_id: string;
   time_created: string;
+  username?: string;
   isEditing?: boolean;
   editText?: string;
   comments?: Comment[];
@@ -39,30 +39,8 @@ export default function Feed() {
   const [newPostText, setNewPostText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFeedLoading, setIsFeedLoading] = useState(true);
-  const [usernamesById, setUsernamesById] = useState<Record<string, string>>({});
   const [avatarsById, setAvatarsById] = useState<Record<string, string>>({});
   const avatarUrlsRef = useRef<Record<string, string>>({});
-
-  const resolveUsernames = async (userIds: string[]) => {
-    const uniqueIds = Array.from(new Set(userIds.filter(Boolean))).filter((id) => !usernamesById[id]);
-
-    if (uniqueIds.length === 0) {
-      return;
-    }
-
-    const resolved = await Promise.all(
-      uniqueIds.map(async (id) => {
-        try {
-          const profile = await getProfileById(id);
-          return [id, profile.username || id] as const;
-        } catch {
-          return [id, id] as const;
-        }
-      })
-    );
-
-    setUsernamesById((prev) => ({ ...prev, ...Object.fromEntries(resolved) }));
-  };
 
   const resolveAvatars = async (userIds: string[]) => {
     const uniqueIds = Array.from(new Set(userIds.filter(Boolean))).filter((id) => !avatarUrlsRef.current[id]);
@@ -108,19 +86,11 @@ export default function Feed() {
     const loadFeed = async () => {
       setIsFeedLoading(true);
       try {
-        if (user?.id) {
-          await getProfileById(user.id);
-        }
-
         const feed = await getFeed();
-        setPublications(feed);
+        setPublications(feed as PublicationItem[]);
         const feedUserIds = feed.map((publication) => publication.user_id);
-        await Promise.all([resolveUsernames(feedUserIds), resolveAvatars(feedUserIds)]);
+        await resolveAvatars(feedUserIds);
       } catch (error) {
-        if (error instanceof Error && error.message.includes('ID not found')) {
-          setLocation('/profile?onboarding=1');
-          return;
-        }
         toast.error(error instanceof Error ? error.message : 'Failed to load feed');
       } finally {
         setIsFeedLoading(false);
@@ -159,9 +129,10 @@ export default function Feed() {
     setIsLoading(true);
     try {
       const publication = await createPublication({ text: newPostText });
-      setPublications((prev) => [publication, ...prev]);
+      const created: PublicationItem = { ...publication, username: user?.email || user?.id || publication.user_id };
+      setPublications((prev) => [created, ...prev]);
       setNewPostText('');
-      await Promise.all([resolveUsernames([publication.user_id]), resolveAvatars([publication.user_id])]);
+      await resolveAvatars([publication.user_id]);
       toast.success('Publication created');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create publication');
@@ -234,7 +205,6 @@ export default function Feed() {
 
     try {
       const comments = await getCommentsByPublication(id);
-      await resolveUsernames(comments.map((comment) => comment.user_id));
       setPublications((prev) =>
         prev.map((publication) =>
           publication.id === id ? { ...publication, comments, isCommentsLoading: false } : publication
@@ -258,7 +228,6 @@ export default function Feed() {
 
     try {
       const comment = await createComment(id, { text });
-      await resolveUsernames([comment.user_id]);
       setPublications((prev) =>
         prev.map((publication) =>
           publication.id === id
@@ -326,7 +295,7 @@ export default function Feed() {
               </Card>
             ) : (
               publications.map((publication) => {
-                const authorName = usernamesById[publication.user_id] || publication.user_id;
+                const authorName = publication.username || publication.user_id;
                 return (
                   <Card key={publication.id} className="shadow-sm transition-shadow hover:shadow-md">
                     <CardHeader className="pb-3">
@@ -474,7 +443,7 @@ export default function Feed() {
                                         onClick={() => setLocation(`/users/${comment.user_id}`)}
                                         className="text-left text-sm font-medium text-foreground hover:text-accent"
                                       >
-                                        {usernamesById[comment.user_id] || comment.user_id}
+                                        {comment.user_id}
                                       </button>
                                       <p className="text-[11px] text-muted-foreground">{comment.user_id}</p>
                                     </div>

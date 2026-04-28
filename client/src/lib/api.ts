@@ -23,6 +23,11 @@ export interface Publication {
   time_created: string;
 }
 
+export interface FeedPublication extends Publication {
+  username?: string;
+  bio?: string;
+}
+
 export interface CreatePublicationRequest {
   text: string;
 }
@@ -320,6 +325,16 @@ export const loginUser = async (data: UserRequest): Promise<void> => {
   await makeRequest('/api/auth/login', 'POST', data, false);
 };
 
+export const authenticate = async (data: UserRequest): Promise<{ user: UserResponse; token: string }> => {
+  await loginUser(data);
+  const token = getToken();
+  if (!token) {
+    throw new Error('No token received from login');
+  }
+  const user = await getUserById();
+  return { user, token };
+};
+
 export const getUserById = async (): Promise<UserResponse> => {
   return makeRequest('/api/auth/id/', 'GET');
 };
@@ -333,7 +348,7 @@ export const createPublication = async (data: CreatePublicationRequest): Promise
   return makeRequest('/api/feed/', 'POST', data);
 };
 
-export const getFeed = async (): Promise<Publication[]> => {
+export const getFeed = async (): Promise<FeedPublication[]> => {
   return makeRequest('/api/feed/', 'GET');
 };
 
@@ -388,11 +403,6 @@ export const updateProfileAvatar = async (file: File): Promise<void> => {
 
 export const getProfileAvatarBlob = async (id: string): Promise<Blob> => {
   return makeBlobRequest(`/api/profile/avatar/${id}`);
-};
-
-// Chat endpoints
-export const createMessage = async (data: CreateMessageRequest): Promise<Message> => {
-  return makeRequest('/api/chat/', 'POST', data);
 };
 
 export const getConversation = async (): Promise<Message[]> => {
